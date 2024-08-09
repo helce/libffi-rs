@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/libffi-sys/2.2.1")]
+#![doc(html_root_url = "https://docs.rs/libffi-sys/2.3.0")]
 //! Low-level Rust bindings for [libffi](https://sourceware.org/libffi/)
 //!
 //! The C libffi library provides two main facilities: assembling calls
@@ -24,14 +24,14 @@
 //!
 //! ```toml
 //! [dependencies]
-//! libffi-sys = "2.2.1"
+//! libffi-sys = "2.3.0"
 //! ```
 //!
 //! to your `Cargo.toml`. If you want to use your system C libffi, then
 //!
 //! ```toml
 //! [dependencies.libffi-sys]
-//! version = "2.2.1"
+//! version = "2.3.0"
 //! features = ["system"]
 //! ```
 //!
@@ -133,6 +133,10 @@ pub struct ffi_cif {
     pub riscv_nfixedargs: c_uint,
     #[cfg(any(target_arch = "riscv", target_arch = "riscv64"))]
     pub riscv_unused: c_uint,
+    #[cfg(all(target_arch = "loongarch64"))]
+    pub loongarch_nfixedargs: c_uint,
+    #[cfg(all(target_arch = "loongarch64"))]
+    pub loongarch_unused: c_uint,
 }
 
 impl Default for ffi_cif {
