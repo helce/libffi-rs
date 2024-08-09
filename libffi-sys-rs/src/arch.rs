@@ -343,3 +343,19 @@ mod s390x {
 
 #[cfg(target_arch = "s390x")]
 pub use s390x::*;
+
+mod e2k {
+    use crate::ffi_abi;
+
+    pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
+    pub const ffi_abi_FFI_E2K: ffi_abi = 1;
+    pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 2;
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_E2K;
+
+    pub const FFI_GO_CLOSURES: u32 = 1;
+    pub const FFI_NATIVE_RAW_API: u32 = 0;
+    pub const FFI_TRAMPOLINE_SIZE: usize = 56;
+}
+
+#[cfg(target_arch = "e2k")]
+pub use e2k::*;

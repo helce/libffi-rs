@@ -56,6 +56,7 @@ tested:
 | AVR32           | Linux            | GCC                     |
 | Blackfin        | uClinux          | GCC                     |
 | CSKY            | Linux            | GCC                     |
+| E2K             | Linux            | LCC                     |
 | HPPA            | HPUX             | GCC                     |
 | KVX             | Linux            | GCC                     |
 | IA-64           | Linux            | GCC                     |
@@ -456,6 +457,7 @@ developers:
     blackfin            Alexandre Keunecke I. de Mendonca
     cris                Simon Posnjak, Hans-Peter Nilsson
     csky                Ma Jun, Zhang Wenmeng
+    e2k                 MCST
     frv                 Anthony Green
     ia64                Hans Boehm
     kvx                 Yann Sionneau
