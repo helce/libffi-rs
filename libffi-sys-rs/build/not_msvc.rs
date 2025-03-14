@@ -63,6 +63,8 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             // configure.host does not extract `ios-sim` as OS.
             // The sources for `ios-sim` should be the same as `ios`.
             "aarch64-apple-ios-sim" => "aarch64-apple-ios",
+            // Autoconf uses e2k for all subtargets
+            _ if target.starts_with("e2k") => "e2k-mcst-linux-gnu",
             // Everything else should be fine to pass straight through
             other => other,
         };
