@@ -1,4 +1,4 @@
-use std::any::Any;
+use core::any::Any;
 
 use super::types::Type;
 
@@ -90,7 +90,7 @@ impl Builder {
     where
         I: IntoIterator<Item = Type>,
     {
-        self.args.extend(types.into_iter());
+        self.args.extend(types);
         self
     }
 

@@ -8,9 +8,9 @@
 //! aren’t checked. See the [`high`](crate::high) layer for closures
 //! with type-checked arguments.
 
-use std::any::Any;
-use std::marker::PhantomData;
-use std::os::raw::c_void;
+use core::any::Any;
+use core::ffi::c_void;
+use core::marker::PhantomData;
 
 use crate::low;
 pub use crate::low::{ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI, Callback, CallbackMut, CodePtr};
@@ -115,7 +115,7 @@ impl Cif {
         let args = args.into_iter();
         let nargs = args.len();
         let args = types::TypeArray::new(args);
-        let mut cif: low::ffi_cif = Default::default();
+        let mut cif = low::ffi_cif::default();
 
         unsafe {
             low::prep_cif(
@@ -265,7 +265,7 @@ pub struct Closure<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> Drop for Closure<'a> {
+impl Drop for Closure<'_> {
     fn drop(&mut self) {
         unsafe {
             low::closure_free(self.alloc);
@@ -460,11 +460,11 @@ impl ClosureOnce {
 mod test {
     use super::*;
     use crate::low;
-    use std::os::raw::c_void;
+    use core::ffi::c_void;
 
     #[test]
     fn call() {
-        let cif = Cif::new(vec![Type::i64(), Type::i64()].into_iter(), Type::i64());
+        let cif = Cif::new(vec![Type::i64(), Type::i64()], Type::i64());
         let f = |m: i64, n: i64| -> i64 {
             unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&m), arg(&n)]) }
         };
@@ -480,7 +480,7 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(vec![Type::u64()].into_iter(), Type::u64());
+        let cif = Cif::new(vec![Type::u64()], Type::u64());
         let env: u64 = 5;
         let closure = Closure::new(cif, callback, &env);
 
@@ -502,7 +502,7 @@ mod test {
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(vec![Type::u64(), Type::u64()].into_iter(), Type::u64());
+        let cif = Cif::new(vec![Type::u64(), Type::u64()], Type::u64());
         let env = |x: u64, y: u64| x + y;
         let closure = Closure::new(cif, callback2, &env);
 
@@ -534,8 +534,7 @@ mod test {
                     Type::i64(),
                 ]),
                 Type::u64(),
-            ]
-            .into_iter(),
+            ],
             Type::u64(),
         );
         let clone_cif = cif.clone();

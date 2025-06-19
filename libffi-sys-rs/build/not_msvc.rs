@@ -37,12 +37,17 @@ pub fn build_and_link() {
     // Generate configure, run configure, make, make install
     configure_libffi(prefix, &build_dir);
 
+    let make_command = if cfg!(target_os = "aix") {
+        "gmake"
+    } else {
+        "make"
+    };
     run_command(
         "Building libffi",
-        Command::new("make")
+        Command::new(make_command)
             .env_remove("DESTDIR")
             .arg("install")
-            .current_dir(&build_dir),
+            .current_dir(build_dir),
     );
 
     // Cargo linking directives
@@ -76,6 +81,14 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             // configure.host does not extract `ios-sim` as OS.
             // The sources for `ios-sim` should be the same as `ios`.
             "aarch64-apple-ios-sim" => "aarch64-apple-ios",
+
+            // MingW targets
+            "x86_64-pc-windows-gnu" | "x86_64-pc-windows-gnullvm" => "x86_64-w64-mingw32",
+
+            "i686-pc-windows-gnu" | "i686-pc-windows-gnullvm" => "i686-w64-mingw32",
+
+            "aarch64-pc-windows-gnullvm" => "aarch64-w64-mingw32",
+
             // Autoconf uses e2k for all subtargets
             _ if target.starts_with("e2k") => "e2k-mcst-linux-gnu",
             // Everything else should be fine to pass straight through
@@ -111,7 +124,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
         command.env(k, v);
     }
 
-    command.current_dir(&build_dir);
+    command.current_dir(build_dir);
 
     if cfg!(windows) {
         // When using MSYS2, OUT_DIR will be a Windows like path such as
@@ -126,13 +139,17 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             .to_str()
             .unwrap()
             .replace(":\\", "/")
-            .replace("\\", "/");
+            .replace('\\', "/");
 
         msys_prefix.insert(0, '/');
 
         command.arg("--prefix").arg(msys_prefix);
     } else {
         command.arg("--prefix").arg(prefix);
+    }
+
+    if cfg!(target_os = "aix") {
+        command.env("MAKE", "gmake");
     }
 
     run_command("Configuring libffi", &mut command);
