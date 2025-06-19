@@ -251,7 +251,7 @@ mod powerpc {
             // ELFv1 is the used for powerpc64 when not targeting musl
             all(target_arch = "powerpc64", target_endian="big", not(target_env = "musl")),
             // Use empty flags when targeting a non-PowerPC target, too, just so code compiles.
-            not(all(target_arch = "powerpc64", target_endian="little"))
+            not(target_arch = "powerpc64")
         ))]
         mod elf {
             pub use super::elfv1::*;
@@ -360,6 +360,24 @@ mod e2k {
 #[cfg(target_arch = "e2k")]
 pub use e2k::*;
 
+/// From libffi:src/sparc/ffitarget.h
+/// See: <https://github.com/libffi/libffi/blob/master/src/sparc/ffitarget.h>
+mod sparcv9 {
+    use crate::ffi_abi;
+
+    pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
+    pub const ffi_abi_FFI_V9: ffi_abi = 1;
+    pub const ffi_abi_LAST_ABI: ffi_abi = 2;
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_V9;
+
+    pub const FFI_GO_CLOSURES: u32 = 1;
+    pub const FFI_TRAMPOLINE_SIZE: usize = 24;
+    pub const FFI_NATIVE_RAW_API: u32 = 0;
+}
+
+#[cfg(target_arch = "sparc64")]
+pub use sparcv9::*;
+
 /// From libffi:src/loongarch64/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/f24180be1367f942824365b131ae894b9c769c7d/src/loongarch64/ffitarget.h#L47>
 mod loongarch64 {
@@ -379,3 +397,49 @@ mod loongarch64 {
 
 #[cfg(target_arch = "loongarch64")]
 pub use loongarch64::*;
+
+/// From libffi:src/mips/ffitarget.h
+/// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/mips/ffitarget.h>
+mod mips {
+    mod common {
+        use crate::ffi_abi;
+        pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
+        pub const ffi_abi_FFI_O32: ffi_abi = 1;
+        pub const ffi_abi_FFI_N32: ffi_abi = 2;
+        pub const ffi_abi_FFI_N64: ffi_abi = 3;
+        pub const ffi_abi_FFI_O32_SOFT_FLOAT: ffi_abi = 4;
+        pub const ffi_abi_FFI_N32_SOFT_FLOAT: ffi_abi = 5;
+        pub const ffi_abi_FFI_N64_SOFT_FLOAT: ffi_abi = 6;
+        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 7;
+
+        pub const FFI_CLOSURES: u32 = 1;
+        pub const FFI_GO_CLOSURES: u32 = 1;
+        pub const FFI_NATIVE_RAW_ABI: u32 = 0;
+    }
+
+    pub mod mips {
+        use crate::ffi_abi;
+
+        pub use super::common::*;
+
+        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_O32;
+
+        pub const FFI_TRAMPOLINE_SIZE: usize = 20;
+    }
+
+    pub mod mips64 {
+        use crate::ffi_abi;
+
+        pub use super::common::*;
+
+        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_N64;
+
+        pub const FFI_TRAMPOLINE_SIZE: usize = 56;
+    }
+}
+
+#[cfg(any(target_arch = "mips", target_arch = "mips32r6"))]
+pub use mips::mips::*;
+
+#[cfg(any(target_arch = "mips64", target_arch = "mips64r6"))]
+pub use mips::mips64::*;

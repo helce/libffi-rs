@@ -17,9 +17,21 @@ pub fn build_and_link() {
             e
         );
     }
+
+    // On Linux, don't preserve the attributes of the source directory.
+    // Not all cp versions support --no-preserve=mode,ownership, so we
+    // first check if it's available.
+    let mut command = Command::new("cp");
+    let has_no_preserve_flag = {
+        let output = Command::new("cp").arg("--help").output().unwrap().stdout;
+        String::from_utf8(output).unwrap().contains("--no-preserve")
+    };
+    if has_no_preserve_flag {
+        command.arg("--no-preserve=mode,ownership");
+    };
     run_command(
         "Copying libffi into the build directory",
-        Command::new("cp").arg("-R").arg("libffi").arg(&build_dir),
+        command.arg("-R").arg("libffi").arg(&build_dir),
     );
 
     // Generate configure, run configure, make, make install
@@ -58,6 +70,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
         let cross_host = match target.as_str() {
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
             "riscv64gc-unknown-linux-gnu" => "riscv64-unknown-linux-gnu",
+            "riscv64gc-unknown-linux-musl" => "riscv64-unknown-linux-musl",
             // Autoconf does not yet recognize illumos, but Solaris should be fine
             "x86_64-unknown-illumos" => "x86_64-unknown-solaris",
             // configure.host does not extract `ios-sim` as OS.
