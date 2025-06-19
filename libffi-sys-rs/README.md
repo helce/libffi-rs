@@ -1,6 +1,6 @@
 # libffi-sys-rs: Low-level Rust bindings for [libffi]
 
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/tov/libffi-rs/Build%20&%20Test)](https://github.com/tov/libffi-rs/actions)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tov/libffi-rs/test.yml?branch=master)](https://github.com/tov/libffi-rs/actions)
 [![Documentation](https://img.shields.io/docsrs/libffi-sys/latest)](https://docs.rs/libffi-sys/latest/libffi_sys/)
 [![Crates.io](https://img.shields.io/crates/v/libffi-sys.svg?maxAge=2592000)](https://crates.io/crates/libffi-sys)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
@@ -31,14 +31,14 @@ a C libffi for you, add
 
 ```toml
 [dependencies]
-libffi-sys = "3.3.0"
+libffi-sys = "3.3.1"
 ```
 
 to your `Cargo.toml`. If you want to use your system C libffi, then
 
 ```toml
 [dependencies.libffi-sys]
-version = "3.3.0"
+version = "3.3.1"
 features = ["system"]
 ```
 
