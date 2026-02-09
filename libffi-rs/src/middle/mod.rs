@@ -14,11 +14,10 @@ use alloc::boxed::Box;
 use core::any::Any;
 use core::ffi::c_void;
 use core::marker::PhantomData;
-use core::ptr::NonNull;
-
-mod util;
+use core::ptr::{null_mut, NonNull};
 
 mod types;
+mod util;
 pub use types::Type;
 
 mod builder;
@@ -65,6 +64,43 @@ pub fn arg<T: ?Sized>(r: &T) -> Arg<'_> {
     Arg::new(r)
 }
 
+/// Contains an untyped pointer for where to put the return value of a function.
+///
+/// Similar to `Arg`, `Ret` coerces a reference to a C `void *` pointer, only
+/// using a mutable reference as libffi will write to the memory location.
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct Ret<'ret>(*mut c_void, PhantomData<&'ret mut c_void>);
+
+impl<'ret> Ret<'ret> {
+    /// Coerces an argument reference into the [`Ret`] type.
+    ///
+    /// This is used to instruct libffi where to put the result when using
+    /// [`Cif::call_return_into`].
+    pub fn new<'return_buf, T: ?Sized>(r: &'return_buf mut T) -> Self
+    where
+        'return_buf: 'ret,
+    {
+        Self(r as *mut T as *mut c_void, PhantomData)
+    }
+
+    /// Returns a `Ret` that can be used when calling `void` functions that do
+    /// not return any value. It will create a `Ret` containing a `NULL` pointer
+    /// and must only be used when calling functions without any return value.
+    pub fn void() -> Self {
+        Self(null_mut(), PhantomData)
+    }
+}
+
+/// Coerces an argument reference into the [`Ret`] type.
+///
+/// This is used to instruct libffi where to put the result when using
+/// [`Cif::call_return_into`]. Calling `ret` is the same as calling
+/// [`Ret::new`].
+pub fn ret<T: ?Sized>(r: &mut T) -> Ret<'_> {
+    Ret::new(r)
+}
+
 /// Describes the calling convention and types for calling a function.
 ///
 /// This is the middle layer’s wrapping of the [`low`](crate::low) and
@@ -101,7 +137,7 @@ pub struct Cif {
 // ffi_cif refers to the clones of the types.
 impl Clone for Cif {
     fn clone(&self) -> Self {
-        let mut copy = Cif {
+        let mut copy = Self {
             cif: self.cif,
             args: self.args.clone(),
             result: self.result.clone(),
@@ -121,7 +157,7 @@ impl Cif {
     /// Takes ownership of the argument and result [`Type`]s, because
     /// the resulting [`Cif`] retains references to them. Defaults to
     /// the platform’s default calling convention; this can be changed by
-    /// creating the [`Cif´] using [`Cif::new_with_abi`].
+    /// creating the [`Cif`] using [`Cif::new_with_abi`].
     pub fn new<I>(args: I, result: Type) -> Self
     where
         I: IntoIterator<Item = Type>,
@@ -150,7 +186,7 @@ impl Cif {
 
         // Note that cif retains references to args and result,
         // which is why we hold onto them here.
-        Cif { cif, args, result }
+        Self { cif, args, result }
     }
 
     /// Creates a new variadic [CIF](Cif) for the given argument and result
@@ -197,7 +233,7 @@ impl Cif {
 
         // Note that cif retains references to args and result,
         // which is why we hold onto them here.
-        Cif { cif, args, result }
+        Self { cif, args, result }
     }
 
     /// Calls a function with the given arguments.
@@ -222,6 +258,36 @@ impl Cif {
             fun,
             args.as_ptr() as *mut *mut c_void,
         )
+    }
+
+    /// Calls a function with the given arguments and writes the return value to
+    /// the value `ret` references.
+    ///
+    /// If the function does not return anything, `ret` will not be written to.
+    /// In that case, [`Ret::void`] can be used to create a `ret` value without
+    /// having to create a new reference.
+    ///
+    /// # Safety
+    ///
+    /// There is no checking that the calling convention and types
+    /// in the `Cif` match the actual calling convention and types of
+    /// `fun`, nor that they match the types of `args`.
+    ///
+    /// `ret` must point to a writable memory location the result value can be
+    /// written to.
+    pub unsafe fn call_return_into(&self, fun: CodePtr, args: &[Arg], ret: Ret) {
+        assert_eq!(
+            self.cif.nargs as usize,
+            args.len(),
+            "Cif::call: passed wrong number of arguments"
+        );
+
+        low::call_return_into(
+            &self.cif as *const _ as *mut _,
+            fun,
+            args.as_ptr() as *mut *mut c_void,
+            ret.0,
+        );
     }
 
     /// Gets a raw pointer to the underlying [`low::ffi_cif`].
@@ -442,7 +508,7 @@ impl ClosureOnce {
             }
         }
 
-        ClosureOnce {
+        Self {
             _alloc: alloc,
             code,
             _cif,
@@ -492,6 +558,23 @@ mod test {
         assert_eq!(12, f(5, 7));
         assert_eq!(13, f(6, 7));
         assert_eq!(15, f(8, 7));
+    }
+
+    #[test]
+    fn call_return_into() {
+        let cif = Cif::new(alloc::vec![Type::i64(), Type::i64()], Type::i64());
+
+        let mut ret_val: i64 = 0;
+
+        unsafe {
+            cif.call_return_into(
+                CodePtr(add_it as *mut c_void),
+                &[arg(&5i64), arg(&7i64)],
+                ret(&mut ret_val),
+            );
+        }
+
+        assert_eq!(12, ret_val);
     }
 
     extern "C" fn add_it(n: i64, m: i64) -> i64 {

@@ -6,11 +6,12 @@ members = [
 ]
 
 [workspace.package]
-repository = "https://github.com/tov/libffi-rs"
+repository = "https://github.com/libffi-rs/libffi-rs"
 license = "MIT/Apache-2.0"
 keywords = ["ffi", "libffi", "closure", "c"]
 edition = "2021"
 rust-version = "1.78"
+authors = ["Jesse A. Tov <jesse.tov@gmail.com>"]
 
 [workspace.lints.clippy]
 complexity = "warn"

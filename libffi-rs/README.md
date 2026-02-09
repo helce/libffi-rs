@@ -22,7 +22,7 @@ you can add
 
 ```toml
 [dependencies]
-libffi = "5.0.0"
+libffi = "5.1.0"
 ```
 
 to your `Cargo.toml`.
@@ -34,7 +34,7 @@ feature in your `Cargo.toml`:
 
 ```toml
 [features]
-libffi = { version = "5.0.0", features = ["system"] }
+libffi = { version = "5.1.0", features = ["system"] }
 ```
 
 See [the `libffi-sys` documentation] for more information about how it
@@ -55,7 +55,7 @@ let x = 5u64;
 let f = |y: u64, z: u64| x + y + z;
 
 let closure = Closure2::new(&f);
-let fun     = closure.code_ptr();
+let fun = closure.code_ptr();
 
 assert_eq!(18, fun(6, 7));
 ```
