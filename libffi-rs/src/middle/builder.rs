@@ -58,7 +58,7 @@ use super::types::Type;
 /// ```
 #[derive(Clone, Debug)]
 pub struct Builder {
-    args: Vec<Type>,
+    args: alloc::vec::Vec<Type>,
     res: Type,
     abi: super::FfiAbi,
 }
@@ -73,7 +73,7 @@ impl Builder {
     /// Constructs a `Builder`.
     pub fn new() -> Self {
         Builder {
-            args: vec![],
+            args: alloc::vec![],
             res: Type::void(),
             abi: super::ffi_abi_FFI_DEFAULT_ABI,
         }
@@ -108,9 +108,7 @@ impl Builder {
 
     /// Builds a CIF.
     pub fn into_cif(self) -> super::Cif {
-        let mut result = super::Cif::new(self.args, self.res);
-        result.set_abi(self.abi);
-        result
+        super::Cif::new_with_abi(self.args, self.res, self.abi)
     }
 
     /// Builds an immutable closure.

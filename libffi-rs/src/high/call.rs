@@ -18,7 +18,6 @@
 //! ```
 
 use core::convert::TryInto;
-use core::marker::PhantomData;
 
 use crate::middle;
 pub use middle::CodePtr;
@@ -33,8 +32,7 @@ pub struct Arg<'a> {
     // There should be some type T such that type_ is the middle-layer
     // value of Type<T> and value is T::reify().
     type_: middle::Type,
-    value: middle::Arg,
-    _marker: PhantomData<&'a ()>,
+    value: middle::Arg<'a>,
 }
 
 impl<'a> Arg<'a> {
@@ -45,7 +43,6 @@ impl<'a> Arg<'a> {
         Arg {
             type_: T::reify().into_middle(),
             value: middle::Arg::new(arg),
-            _marker: PhantomData,
         }
     }
 }
@@ -81,7 +78,10 @@ pub unsafe fn call<R: super::CType>(fun: CodePtr, args: &[Arg]) -> R {
     let types = args.iter().map(|arg| arg.type_.clone());
     let cif = middle::Cif::new(types, R::reify().into_middle());
 
-    let values = args.iter().map(|arg| arg.value.clone()).collect::<Vec<_>>();
+    let values = args
+        .iter()
+        .map(|arg| arg.value.clone())
+        .collect::<alloc::vec::Vec<_>>();
     // If `R` is a small integer type, libffi implicitly extends it to
     // `ffi_arg` or `ffi_sarg`.  To account for this, use `R::RetType`
     // as return type for the low-level call, and convert the result back.

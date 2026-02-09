@@ -27,15 +27,19 @@ jobs:
         toolchain:
           - 1.78.0
           - stable
+        features:
+          - "--no-default-features"
+          - "--features std"
+          - "--features std,system"
     runs-on: windows-latest
-    name: ${{ matrix.runner }} ${{ matrix.toolchain }} ${{ matrix.features }}
+    name: windows-msvc ${{ matrix.toolchain }} ${{ matrix.features }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
       - name: Run tests
-        run: cargo test
+        run: cargo test --workspace ${{ matrix.features }}
 
   windows-gnu:
     strategy:
@@ -44,8 +48,11 @@ jobs:
         toolchain:
           - 1.78.0-gnu
           - stable-gnu
+        features:
+          - "--no-default-features"
+          - "--features std"
     runs-on: windows-latest
-    name: windows-gnu ${{ matrix.toolchain }}
+    name: windows-gnu ${{ matrix.toolchain }} ${{ matrix.features }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup MSYS2
@@ -58,7 +65,7 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
       - name: Run tests
         shell: msys2 {0}
-        run: cargo test
+        run: cargo test --workspace ${{ matrix.features }}
 
   macos:
     strategy:
@@ -72,7 +79,8 @@ jobs:
           - stable
         features:
           - "--no-default-features"
-          - "--features system"
+          - "--features std"
+          - "--features std,system"
     runs-on: ${{ matrix.runner }}
     name: ${{ matrix.runner }} ${{ matrix.toolchain }} ${{ matrix.features }}
     steps:
@@ -83,7 +91,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
       - name: Run tests
-        run: 'cargo test ${{ matrix.features }}'
+        run: 'cargo test --workspace ${{ matrix.features }}'
 
   linux:
     strategy:
@@ -97,7 +105,8 @@ jobs:
           - stable
         features:
           - "--no-default-features"
-          - "--features system"
+          - "--features std"
+          - "--features std,system"
     runs-on: ubuntu-latest
     name: ${{ matrix.runner }} ${{ matrix.toolchain }} ${{ matrix.features }}
     steps:
@@ -106,7 +115,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
       - name: Run tests
-        run: 'cargo test ${{ matrix.features }}'
+        run: 'cargo test --workspace ${{ matrix.features }}'
 
   free-bsd:
     runs-on: ubuntu-latest
@@ -123,7 +132,7 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           run: |
             . "$HOME/.cargo/env"
-            cargo test
+            cargo test --workspace 
 
   qemu:
     runs-on: ubuntu-latest

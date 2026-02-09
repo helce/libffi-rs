@@ -6,15 +6,31 @@
 //! and a result type, and libffi uses this to figure out how to set up
 //! a call to a function with those types.
 
+use core::fmt;
 use core::mem;
-use core::ptr;
-use core::ptr::addr_of_mut;
+use core::ptr::{addr_of_mut, null_mut};
 use libc;
-use std::fmt;
 
 use crate::low;
 
 use super::util::Unique;
+
+// Use types defined in Rust when executing miri
+#[cfg(all(miri, feature = "complex", not(windows)))]
+use miri::{complex_double, complex_float, complex_longdouble};
+#[cfg(miri)]
+use miri::{
+    double, float, longdouble, pointer, sint16, sint32, sint64, sint8, uint16, uint32, uint64,
+    uint8, void,
+};
+
+#[cfg(all(not(miri), feature = "complex", not(windows)))]
+use crate::low::types::{complex_double, complex_float, complex_longdouble};
+#[cfg(not(miri))]
+use crate::low::types::{
+    double, float, longdouble, pointer, sint16, sint32, sint64, sint8, uint16, uint32, uint64,
+    uint8, void,
+};
 
 // Internally we represent types and type arrays using raw pointers,
 // since this is what libffi understands. Below we wrap them with
@@ -89,7 +105,7 @@ unsafe fn ffi_type_array_create_empty(len: usize) -> Owned<TypeArray_> {
         !array.is_null(),
         "ffi_type_array_create_empty: out of memory"
     );
-    *array.add(len) = ptr::null_mut::<low::ffi_type>() as Type_;
+    *array.add(len) = null_mut::<low::ffi_type>() as Type_;
     array
 }
 
@@ -208,24 +224,24 @@ impl Clone for TypeArray {
 
 macro_rules! match_size_signed {
     ( $name:ident ) => {
-        match mem::size_of::<libc::$name>() {
+        match mem::size_of::<core::ffi::$name>() {
             1 => Self::i8(),
             2 => Self::i16(),
             4 => Self::i32(),
             8 => Self::i64(),
-            _ => panic!("Strange size for C type"),
+            _ => panic!("Unsupported integer size"),
         }
     };
 }
 
 macro_rules! match_size_unsigned {
     ( $name:ident ) => {
-        match mem::size_of::<libc::$name>() {
+        match mem::size_of::<core::ffi::$name>() {
             1 => Self::u8(),
             2 => Self::u16(),
             4 => Self::u32(),
             8 => Self::u64(),
-            _ => panic!("Strange size for C type"),
+            _ => panic!("Unsupported integer size"),
         }
     };
 }
@@ -236,47 +252,47 @@ impl Type {
     /// This is used only for the return type of a [CIF](super::Cif),
     /// not for an argument or struct member.
     pub fn void() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::void)) })
+        Type(unsafe { Unique::new(addr_of_mut!(void)) })
     }
 
     /// Returns the unsigned 8-bit numeric type.
     pub fn u8() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::uint8)) })
+        Type(unsafe { Unique::new(addr_of_mut!(uint8)) })
     }
 
     /// Returns the signed 8-bit numeric type.
     pub fn i8() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::sint8)) })
+        Type(unsafe { Unique::new(addr_of_mut!(sint8)) })
     }
 
     /// Returns the unsigned 16-bit numeric type.
     pub fn u16() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::uint16)) })
+        Type(unsafe { Unique::new(addr_of_mut!(uint16)) })
     }
 
     /// Returns the signed 16-bit numeric type.
     pub fn i16() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::sint16)) })
+        Type(unsafe { Unique::new(addr_of_mut!(sint16)) })
     }
 
     /// Returns the unsigned 32-bit numeric type.
     pub fn u32() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::uint32)) })
+        Type(unsafe { Unique::new(addr_of_mut!(uint32)) })
     }
 
     /// Returns the signed 32-bit numeric type.
     pub fn i32() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::sint32)) })
+        Type(unsafe { Unique::new(addr_of_mut!(sint32)) })
     }
 
     /// Returns the unsigned 64-bit numeric type.
     pub fn u64() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::uint64)) })
+        Type(unsafe { Unique::new(addr_of_mut!(uint64)) })
     }
 
     /// Returns the signed 64-bit numeric type.
     pub fn i64() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::sint64)) })
+        Type(unsafe { Unique::new(addr_of_mut!(sint64)) })
     }
 
     #[cfg(target_pointer_width = "16")]
@@ -367,46 +383,46 @@ impl Type {
 
     /// Returns the C `float` (32-bit floating point) type.
     pub fn f32() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::float)) })
+        Type(unsafe { Unique::new(addr_of_mut!(float)) })
     }
 
     /// Returns the C `double` (64-bit floating point) type.
     pub fn f64() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::double)) })
+        Type(unsafe { Unique::new(addr_of_mut!(double)) })
     }
 
     /// Returns the C `void*` type, for passing any kind of pointer.
     pub fn pointer() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::pointer)) })
+        Type(unsafe { Unique::new(addr_of_mut!(pointer)) })
     }
 
     /// Returns the C `long double` (extended-precision floating point) type.
     pub fn longdouble() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::longdouble)) })
+        Type(unsafe { Unique::new(addr_of_mut!(longdouble)) })
     }
 
     /// Returns the C `_Complex float` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
-    #[cfg(feature = "complex")]
+    /// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
+    #[cfg(all(feature = "complex", not(windows)))]
     pub fn c32() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::complex_float)) })
+        Type(unsafe { Unique::new(addr_of_mut!(complex_float)) })
     }
 
     /// Returns the C `_Complex double` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
-    #[cfg(feature = "complex")]
+    /// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
+    #[cfg(all(feature = "complex", not(windows)))]
     pub fn c64() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::complex_double)) })
+        Type(unsafe { Unique::new(addr_of_mut!(complex_double)) })
     }
 
     /// Returns the C `_Complex long double` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
-    #[cfg(feature = "complex")]
+    /// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
+    #[cfg(all(feature = "complex", not(windows)))]
     pub fn complex_longdouble() -> Self {
-        Type(unsafe { Unique::new(addr_of_mut!(low::types::complex_longdouble)) })
+        Type(unsafe { Unique::new(addr_of_mut!(complex_longdouble)) })
     }
 
     /// Constructs a structure type whose fields have the given types.
@@ -449,9 +465,12 @@ impl TypeArray {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
+    use alloc::format;
+
     use super::*;
+    use crate::raw;
 
     #[test]
     fn create_u64() {
@@ -465,13 +484,337 @@ mod test {
 
     #[test]
     fn create_struct() {
-        Type::structure(vec![Type::i64(), Type::i64(), Type::u64()]);
+        Type::structure(alloc::vec![Type::i64(), Type::i64(), Type::u64()]);
     }
 
     #[test]
     fn clone_struct() {
-        let _ = Type::structure(vec![Type::i64(), Type::i64(), Type::u64()])
+        let _ = Type::structure(alloc::vec![Type::i64(), Type::i64(), Type::u64()])
             .clone()
             .clone();
     }
+
+    /// Verify that [`Type`]'s `Debug` impl does not misbehave.
+    #[test]
+    fn verify_type_debug_behavior() {
+        let ffi_type = Type::structure([
+            Type::u16(),
+            Type::f32(),
+            Type::structure([Type::i32(), Type::structure([])]),
+            Type::pointer(),
+        ]);
+
+        let _string = format!("{ffi_type:?}");
+    }
+
+    #[test]
+    fn verify_type_layout() {
+        let ffi_struct = Type::structure([
+            // First struct, containing a struct, i8, and u8
+            Type::structure([
+                // Second struct, containing a i16, struct, and u16
+                Type::i16(),
+                Type::structure([
+                    // Third struct, containing a i32, u32 and struct
+                    Type::i32(),
+                    Type::u32(),
+                    Type::structure([
+                        // Fourth struct, only a struct
+                        Type::structure([
+                            // Fifth and final struct, no members
+                        ]),
+                    ]),
+                ]),
+                Type::u16(),
+            ]),
+            Type::i8(),
+            Type::u8(),
+            Type::f32(),
+            Type::f64(),
+            #[cfg(all(feature = "complex", not(windows)))]
+            Type::c32(),
+            #[cfg(all(feature = "complex", not(windows)))]
+            Type::c64(),
+        ]);
+
+        verify_struct_layout(&ffi_struct);
+
+        let clone1 = ffi_struct.clone();
+        verify_struct_layout(&ffi_struct);
+        verify_struct_layout(&clone1);
+
+        let clone2 = ffi_struct.clone();
+        verify_struct_layout(&ffi_struct);
+        verify_struct_layout(&clone1);
+        verify_struct_layout(&clone2);
+
+        let clone3 = clone1.clone();
+        verify_struct_layout(&ffi_struct);
+        verify_struct_layout(&clone1);
+        verify_struct_layout(&clone2);
+        verify_struct_layout(&clone3);
+
+        drop(clone2);
+        verify_struct_layout(&ffi_struct);
+        verify_struct_layout(&clone1);
+        verify_struct_layout(&clone3);
+
+        drop(ffi_struct);
+        verify_struct_layout(&clone1);
+        verify_struct_layout(&clone3);
+    }
+
+    // Utility function to verify the layout of the struct created by
+    // `verify_raw_type_layout` and to ensure proper memory handling when
+    // cloning and dropping the `Type`.
+    fn verify_struct_layout(ty: &Type) {
+        // First struct: struct, i8, u8
+        let struct_1 = unsafe { &**ty.0 };
+        assert_eq!(struct_1.size, 0);
+        assert_eq!(struct_1.alignment, 0);
+        assert_eq!(struct_1.type_, raw::FFI_TYPE_STRUCT);
+
+        assert_eq!(unsafe { (**struct_1.elements).type_ }, raw::FFI_TYPE_STRUCT);
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(1)).type_ },
+            raw::FFI_TYPE_SINT8
+        );
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(2)).type_ },
+            raw::FFI_TYPE_UINT8
+        );
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(3)).type_ },
+            raw::FFI_TYPE_FLOAT
+        );
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(4)).type_ },
+            raw::FFI_TYPE_DOUBLE
+        );
+        #[cfg(any(not(feature = "complex"), windows))]
+        assert!(unsafe { (*struct_1.elements.add(5)).is_null() });
+        #[cfg(all(feature = "complex", not(windows)))]
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(5)).type_ },
+            raw::FFI_TYPE_COMPLEX
+        );
+        #[cfg(all(feature = "complex", not(windows)))]
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(6)).type_ },
+            raw::FFI_TYPE_COMPLEX
+        );
+        #[cfg(all(feature = "complex", not(windows)))]
+        assert_eq!(
+            unsafe { (**struct_1.elements.add(7)).type_ },
+            raw::FFI_TYPE_COMPLEX
+        );
+        #[cfg(all(feature = "complex", not(windows)))]
+        assert!(unsafe { (*struct_1.elements.add(8)).is_null() });
+
+        // Second struct: i16, struct, u16
+        let struct_2 = unsafe { &**struct_1.elements };
+        assert_eq!(struct_2.size, 0);
+        assert_eq!(struct_2.alignment, 0);
+        assert_eq!(struct_2.type_, raw::FFI_TYPE_STRUCT);
+
+        assert_eq!(unsafe { (**struct_2.elements).type_ }, raw::FFI_TYPE_SINT16);
+        assert_eq!(
+            unsafe { (**struct_2.elements.add(1)).type_ },
+            raw::FFI_TYPE_STRUCT
+        );
+        assert_eq!(
+            unsafe { (**struct_2.elements.add(2)).type_ },
+            raw::FFI_TYPE_UINT16
+        );
+        assert!(unsafe { (*struct_2.elements.add(3)).is_null() });
+
+        // Third struct: i8, u8, struct
+        let struct_3 = unsafe { &**(struct_2.elements.add(1)) };
+        assert_eq!(struct_3.size, 0);
+        assert_eq!(struct_3.alignment, 0);
+        assert_eq!(struct_3.type_, raw::FFI_TYPE_STRUCT);
+
+        assert_eq!(unsafe { (**struct_3.elements).type_ }, raw::FFI_TYPE_SINT32);
+        assert_eq!(
+            unsafe { (**struct_3.elements.add(1)).type_ },
+            raw::FFI_TYPE_UINT32
+        );
+        assert_eq!(
+            unsafe { (**struct_3.elements.add(2)).type_ },
+            raw::FFI_TYPE_STRUCT
+        );
+        assert!(unsafe { (*struct_3.elements.add(3)).is_null() });
+
+        // Fourth struct: struct
+        let struct_4 = unsafe { &**(struct_3.elements.add(2)) };
+        assert_eq!(struct_4.size, 0);
+        assert_eq!(struct_4.alignment, 0);
+        assert_eq!(struct_4.type_, raw::FFI_TYPE_STRUCT);
+
+        assert_eq!(unsafe { (**struct_4.elements).type_ }, raw::FFI_TYPE_STRUCT);
+        assert!(unsafe { (*struct_4.elements.add(1)).is_null() });
+
+        // Fifth and final struct: nothing
+        let struct_5 = unsafe { &**(struct_4.elements) };
+        assert_eq!(struct_5.size, 0);
+        assert_eq!(struct_5.alignment, 0);
+        assert_eq!(struct_5.type_, raw::FFI_TYPE_STRUCT);
+
+        assert!(unsafe { (*struct_5.elements).is_null() });
+    }
+}
+
+#[cfg(miri)]
+#[expect(non_upper_case_globals)]
+mod miri {
+    use crate::low::ffi_type;
+    #[cfg(all(feature = "complex", not(windows)))]
+    use crate::raw::FFI_TYPE_COMPLEX;
+    use crate::raw::{
+        FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_LONGDOUBLE, FFI_TYPE_POINTER, FFI_TYPE_SINT16,
+        FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_SINT8, FFI_TYPE_UINT16, FFI_TYPE_UINT32,
+        FFI_TYPE_UINT64, FFI_TYPE_UINT8, FFI_TYPE_VOID,
+    };
+    use core::ffi::c_void;
+    use core::mem::{align_of, size_of};
+    #[cfg(all(feature = "complex", not(windows)))]
+    use core::ptr::addr_of_mut;
+    use core::ptr::null_mut;
+
+    // Redefining static muts so this module can be tested with miri
+    pub static mut sint8: ffi_type = ffi_type {
+        size: size_of::<i8>(),
+        alignment: align_of::<i8>() as u16,
+        type_: FFI_TYPE_SINT8,
+        elements: null_mut(),
+    };
+
+    pub static mut uint8: ffi_type = ffi_type {
+        size: size_of::<u8>(),
+        alignment: align_of::<u8>() as u16,
+        type_: FFI_TYPE_UINT8,
+        elements: null_mut(),
+    };
+
+    pub static mut sint16: ffi_type = ffi_type {
+        size: size_of::<i16>(),
+        alignment: align_of::<i16>() as u16,
+        type_: FFI_TYPE_SINT16,
+        elements: null_mut(),
+    };
+
+    pub static mut uint16: ffi_type = ffi_type {
+        size: size_of::<u16>(),
+        alignment: align_of::<u16>() as u16,
+        type_: FFI_TYPE_UINT16,
+        elements: null_mut(),
+    };
+
+    pub static mut sint32: ffi_type = ffi_type {
+        size: size_of::<i32>(),
+        alignment: align_of::<i32>() as u16,
+        type_: FFI_TYPE_SINT32,
+        elements: null_mut(),
+    };
+
+    pub static mut uint32: ffi_type = ffi_type {
+        size: size_of::<u32>(),
+        alignment: align_of::<u32>() as u16,
+        type_: FFI_TYPE_UINT32,
+        elements: null_mut(),
+    };
+
+    pub static mut sint64: ffi_type = ffi_type {
+        size: size_of::<i64>(),
+        alignment: align_of::<i64>() as u16,
+        type_: FFI_TYPE_SINT64,
+        elements: null_mut(),
+    };
+
+    pub static mut uint64: ffi_type = ffi_type {
+        size: size_of::<u64>(),
+        alignment: align_of::<u64>() as u16,
+        type_: FFI_TYPE_UINT64,
+        elements: null_mut(),
+    };
+
+    pub static mut pointer: ffi_type = ffi_type {
+        size: size_of::<*mut c_void>(),
+        alignment: align_of::<*mut c_void>() as u16,
+        type_: FFI_TYPE_POINTER,
+        elements: null_mut(),
+    };
+
+    pub static mut float: ffi_type = ffi_type {
+        size: size_of::<f32>(),
+        alignment: align_of::<f32>() as u16,
+        type_: FFI_TYPE_FLOAT,
+        elements: null_mut(),
+    };
+
+    pub static mut double: ffi_type = ffi_type {
+        size: size_of::<f64>(),
+        alignment: align_of::<f64>() as u16,
+        type_: FFI_TYPE_DOUBLE,
+        elements: null_mut(),
+    };
+
+    // Note that this layout is not necessarily correct and should only be used
+    // to verify memory operations with miri, and not for calling foreign
+    // functions.
+    pub static mut longdouble: ffi_type = ffi_type {
+        size: size_of::<f64>(),
+        alignment: align_of::<f64>() as u16,
+        type_: FFI_TYPE_LONGDOUBLE,
+        elements: null_mut(),
+    };
+
+    #[cfg(all(feature = "complex", not(windows)))]
+    static mut complex_float_elements: [*mut ffi_type; 2] = [addr_of_mut!(float), null_mut()];
+
+    // Note that this layout is not necessarily correct and should only be used
+    // to verify memory operations with miri, and not for calling foreign
+    // functions.
+    #[cfg(all(feature = "complex", not(windows)))]
+    pub static mut complex_float: ffi_type = ffi_type {
+        size: 2 * size_of::<f32>(),
+        alignment: align_of::<f32>() as u16,
+        type_: FFI_TYPE_COMPLEX,
+        elements: addr_of_mut!(complex_float_elements).cast(),
+    };
+
+    #[cfg(all(feature = "complex", not(windows)))]
+    static mut complex_double_elements: [*mut ffi_type; 2] = [addr_of_mut!(double), null_mut()];
+
+    // Note that this layout is not necessarily correct and should only be used
+    // to verify memory operations with miri, and not for calling foreign
+    // functions.
+    #[cfg(all(feature = "complex", not(windows)))]
+    pub static mut complex_double: ffi_type = ffi_type {
+        size: 2 * size_of::<f64>(),
+        alignment: align_of::<f64>() as u16,
+        type_: FFI_TYPE_COMPLEX,
+        elements: addr_of_mut!(complex_double_elements).cast(),
+    };
+
+    #[cfg(all(feature = "complex", not(windows)))]
+    static mut complex_longdouble_elements: [*mut ffi_type; 2] = [addr_of_mut!(double), null_mut()];
+
+    // Note that this layout is not necessarily correct and should only be used
+    // to verify memory operations with miri, and not for calling foreign
+    // functions.
+    #[cfg(all(feature = "complex", not(windows)))]
+    pub static mut complex_longdouble: ffi_type = ffi_type {
+        size: 2 * size_of::<f64>(),
+        alignment: align_of::<f64>() as u16,
+        type_: FFI_TYPE_COMPLEX,
+        elements: addr_of_mut!(complex_longdouble_elements).cast(),
+    };
+
+    pub static mut void: ffi_type = ffi_type {
+        size: 0,
+        alignment: 0,
+        type_: FFI_TYPE_VOID,
+        elements: null_mut(),
+    };
 }

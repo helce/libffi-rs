@@ -12,13 +12,16 @@ use core::mem;
 
 use crate::raw;
 
-/// The two kinds of errors reported by libffi.
+/// The errors reported by libffi.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
     /// Given a bad or unsupported type representation.
     Typedef,
     /// Given a bad or unsupported ABI.
     Abi,
+    /// Given a bad or unsupported argument type.
+    ArgType,
 }
 
 /// The [`std::result::Result`] type specialized for libffi [`Error`]s.
@@ -30,6 +33,8 @@ fn status_to_result<R>(status: raw::ffi_status, good: R) -> Result<R> {
         Ok(good)
     } else if status == raw::ffi_status_FFI_BAD_TYPEDEF {
         Err(Error::Typedef)
+    } else if status == raw::ffi_status_FFI_BAD_ARGTYPE {
+        Err(Error::ArgType)
     }
     // If we don't recognize the status, that is an ABI error:
     else {
@@ -139,7 +144,7 @@ pub mod types {
         ffi_type_void as void,
     };
 
-    #[cfg(feature = "complex")]
+    #[cfg(all(feature = "complex", not(windows)))]
     pub use crate::raw::{
         ffi_type_complex_double as complex_double, ffi_type_complex_float as complex_float,
         ffi_type_complex_longdouble as complex_longdouble,
@@ -189,13 +194,13 @@ pub mod type_tag {
     use core::ffi::c_ushort;
 
     /// Indicates a structure type.
-    pub const STRUCT: c_ushort = raw::ffi_type_enum_STRUCT as c_ushort;
+    pub const STRUCT: c_ushort = raw::ffi_type_enum_STRUCT;
 
     /// Indicates a complex number type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
-    #[cfg(feature = "complex")]
-    pub const COMPLEX: c_ushort = raw::ffi_type_enum_COMPLEX as c_ushort;
+    /// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
+    #[cfg(all(feature = "complex", not(windows)))]
+    pub const COMPLEX: c_ushort = raw::ffi_type_enum_COMPLEX;
 }
 
 /// Initalizes a CIF (Call Interface) with the given ABI
@@ -403,9 +408,9 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
 /// `result` must be a pointer to a `usize` and
 /// `mem::size_of::<R> <= mem::size_of::<usize>()`.
 unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const usize) -> R {
-    if type_tag == raw::FFI_TYPE_FLOAT as u16
-        || type_tag == raw::FFI_TYPE_STRUCT as u16
-        || type_tag == raw::FFI_TYPE_VOID as u16
+    if type_tag == raw::FFI_TYPE_FLOAT
+        || type_tag == raw::FFI_TYPE_STRUCT
+        || type_tag == raw::FFI_TYPE_VOID
     {
         // SAFETY: Testing has shown that these types appear at `result`.
         unsafe { result.cast::<R>().read() }
@@ -690,7 +695,7 @@ pub unsafe fn prep_closure_mut<U, R>(
     status_to_result(status, ())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
     use std::ptr::{addr_of_mut, null_mut};
 

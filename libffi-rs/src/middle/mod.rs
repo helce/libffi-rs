@@ -8,12 +8,13 @@
 //! aren’t checked. See the [`high`](crate::high) layer for closures
 //! with type-checked arguments.
 
+use crate::low;
+pub use crate::low::{ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI, Callback, CallbackMut, CodePtr};
+use alloc::boxed::Box;
 use core::any::Any;
 use core::ffi::c_void;
 use core::marker::PhantomData;
-
-use crate::low;
-pub use crate::low::{ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI, Callback, CallbackMut, CodePtr};
+use core::ptr::NonNull;
 
 mod util;
 
@@ -23,6 +24,17 @@ pub use types::Type;
 mod builder;
 pub use builder::Builder;
 
+#[derive(Debug)]
+pub(crate) struct ClosureAlloc(NonNull<low::ffi_closure>);
+
+impl Drop for ClosureAlloc {
+    fn drop(&mut self) {
+        unsafe {
+            low::closure_free(self.0.as_ptr());
+        }
+    }
+}
+
 /// Contains an untyped pointer to a function argument.
 ///
 /// When calling a function via a [CIF](Cif), each argument
@@ -30,15 +42,18 @@ pub use builder::Builder;
 /// struct accomplishes the necessary coercion.
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct Arg(*mut c_void);
+pub struct Arg<'arg>(*mut c_void, PhantomData<&'arg c_void>);
 
-impl Arg {
+impl<'arg> Arg<'arg> {
     /// Coerces an argument reference into the [`Arg`] type.
     ///
     /// This is used to wrap each argument pointer before passing them
     /// to [`Cif::call`].
-    pub fn new<T: ?Sized>(r: &T) -> Self {
-        Arg(r as *const T as *mut c_void)
+    pub fn new<'argument, T: ?Sized>(r: &'argument T) -> Self
+    where
+        'argument: 'arg,
+    {
+        Arg(r as *const T as *mut c_void, PhantomData)
     }
 }
 
@@ -46,7 +61,7 @@ impl Arg {
 ///
 /// This is used to wrap each argument pointer before passing them
 /// to [`Cif::call`]. (This is the same as [`Arg::new`]).
-pub fn arg<T: ?Sized>(r: &T) -> Arg {
+pub fn arg<T: ?Sized>(r: &T) -> Arg<'_> {
     Arg::new(r)
 }
 
@@ -101,13 +116,26 @@ impl Clone for Cif {
 
 impl Cif {
     /// Creates a new [CIF](Cif) for the given argument and result
-    /// types.
+    /// types with the default ABI.
     ///
     /// Takes ownership of the argument and result [`Type`]s, because
     /// the resulting [`Cif`] retains references to them. Defaults to
-    /// the platform’s default calling convention; this can be adjusted
-    /// using [`Cif::set_abi`].
+    /// the platform’s default calling convention; this can be changed by
+    /// creating the [`Cif´] using [`Cif::new_with_abi`].
     pub fn new<I>(args: I, result: Type) -> Self
+    where
+        I: IntoIterator<Item = Type>,
+        I::IntoIter: ExactSizeIterator<Item = Type>,
+    {
+        Self::new_with_abi(args, result, ffi_abi_FFI_DEFAULT_ABI)
+    }
+
+    /// Creates a new [CIF](Cif) for the given argument and result
+    /// types with the specified ABI.
+    ///
+    /// Takes ownership of the argument and result [`Type`]s, because
+    /// the resulting [`Cif`] retains references to them.
+    pub fn new_with_abi<I>(args: I, result: Type, abi: FfiAbi) -> Self
     where
         I: IntoIterator<Item = Type>,
         I::IntoIter: ExactSizeIterator<Item = Type>,
@@ -117,16 +145,8 @@ impl Cif {
         let args = types::TypeArray::new(args);
         let mut cif = low::ffi_cif::default();
 
-        unsafe {
-            low::prep_cif(
-                &mut cif,
-                low::ffi_abi_FFI_DEFAULT_ABI,
-                nargs,
-                result.as_raw_ptr(),
-                args.as_raw_ptr(),
-            )
-        }
-        .expect("low::prep_cif");
+        unsafe { low::prep_cif(&mut cif, abi, nargs, result.as_raw_ptr(), args.as_raw_ptr()) }
+            .expect("low::prep_cif");
 
         // Note that cif retains references to args and result,
         // which is why we hold onto them here.
@@ -134,13 +154,26 @@ impl Cif {
     }
 
     /// Creates a new variadic [CIF](Cif) for the given argument and result
-    /// types.
+    /// types with the default ABI.
     ///
     /// Takes ownership of the argument and result [`Type`]s, because
     /// the resulting [`Cif`] retains references to them. Defaults to
-    /// the platform’s default calling convention; this can be adjusted
-    /// using [`Cif::set_abi`].
+    /// the platform’s default calling convention; this can be changed by
+    /// creating the [`Cif`] using [`Cif::new_variadic_with_abi`].
     pub fn new_variadic<I>(args: I, fixed_args: usize, result: Type) -> Self
+    where
+        I: IntoIterator<Item = Type>,
+        I::IntoIter: ExactSizeIterator<Item = Type>,
+    {
+        Self::new_variadic_with_abi(args, fixed_args, result, ffi_abi_FFI_DEFAULT_ABI)
+    }
+
+    /// Creates a new variadic [CIF](Cif) for the given argument and result
+    /// types with the default ABI.
+    ///
+    /// Takes ownership of the argument and result [`Type`]s, because
+    /// the resulting [`Cif`] retains references to them.
+    pub fn new_variadic_with_abi<I>(args: I, fixed_args: usize, result: Type, abi: FfiAbi) -> Self
     where
         I: IntoIterator<Item = Type>,
         I::IntoIter: ExactSizeIterator<Item = Type>,
@@ -153,7 +186,7 @@ impl Cif {
         unsafe {
             low::prep_cif_var(
                 &mut cif,
-                low::ffi_abi_FFI_DEFAULT_ABI,
+                abi,
                 fixed_args,
                 nargs,
                 result.as_raw_ptr(),
@@ -189,11 +222,6 @@ impl Cif {
             fun,
             args.as_ptr() as *mut *mut c_void,
         )
-    }
-
-    /// Sets the CIF to use the given calling convention.
-    pub fn set_abi(&mut self, abi: FfiAbi) {
-        self.cif.abi = abi;
     }
 
     /// Gets a raw pointer to the underlying [`low::ffi_cif`].
@@ -260,17 +288,9 @@ impl Cif {
 #[derive(Debug)]
 pub struct Closure<'a> {
     _cif: Box<Cif>,
-    alloc: *mut low::ffi_closure,
+    _alloc: ClosureAlloc,
     code: CodePtr,
     _marker: PhantomData<&'a ()>,
-}
-
-impl Drop for Closure<'_> {
-    fn drop(&mut self) {
-        unsafe {
-            low::closure_free(self.alloc);
-        }
-    }
 }
 
 impl<'a> Closure<'a> {
@@ -290,10 +310,11 @@ impl<'a> Closure<'a> {
     pub fn new<U, R>(cif: Cif, callback: Callback<U, R>, userdata: &'a U) -> Self {
         let cif = Box::new(cif);
         let (alloc, code) = low::closure_alloc();
+        let alloc = ClosureAlloc(NonNull::new(alloc).unwrap());
 
         unsafe {
             low::prep_closure(
-                alloc,
+                alloc.0.as_ptr(),
                 cif.as_raw_ptr(),
                 callback,
                 userdata as *const U,
@@ -304,7 +325,7 @@ impl<'a> Closure<'a> {
 
         Closure {
             _cif: cif,
-            alloc,
+            _alloc: alloc,
             code,
             _marker: PhantomData,
         }
@@ -326,15 +347,22 @@ impl<'a> Closure<'a> {
     pub fn new_mut<U, R>(cif: Cif, callback: CallbackMut<U, R>, userdata: &'a mut U) -> Self {
         let cif = Box::new(cif);
         let (alloc, code) = low::closure_alloc();
+        let alloc = ClosureAlloc(NonNull::new(alloc).unwrap());
 
         unsafe {
-            low::prep_closure_mut(alloc, cif.as_raw_ptr(), callback, userdata as *mut U, code)
-                .unwrap();
+            low::prep_closure_mut(
+                alloc.0.as_ptr(),
+                cif.as_raw_ptr(),
+                callback,
+                userdata as *mut U,
+                code,
+            )
+            .unwrap();
         }
 
         Closure {
             _cif: cif,
-            alloc,
+            _alloc: alloc,
             code,
             _marker: PhantomData,
         }
@@ -374,18 +402,10 @@ pub type CallbackOnce<U, R> = CallbackMut<Option<U>, R>;
 /// which case the userdata will be gone if called again.
 #[derive(Debug)]
 pub struct ClosureOnce {
-    alloc: *mut low::ffi_closure,
+    _alloc: ClosureAlloc,
     code: CodePtr,
     _cif: Box<Cif>,
     _userdata: Box<dyn Any>,
-}
-
-impl Drop for ClosureOnce {
-    fn drop(&mut self) {
-        unsafe {
-            low::closure_free(self.alloc);
-        }
-    }
 }
 
 impl ClosureOnce {
@@ -406,14 +426,13 @@ impl ClosureOnce {
         let _cif = Box::new(cif);
         let _userdata = Box::new(Some(userdata)) as Box<dyn Any>;
         let (alloc, code) = low::closure_alloc();
-
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        let alloc = ClosureAlloc(NonNull::new(alloc).unwrap());
 
         {
             let borrow = _userdata.downcast_ref::<Option<U>>().unwrap();
             unsafe {
                 low::prep_closure_mut(
-                    alloc,
+                    alloc.0.as_ptr(),
                     _cif.as_raw_ptr(),
                     callback,
                     borrow as *const _ as *mut _,
@@ -424,7 +443,7 @@ impl ClosureOnce {
         }
 
         ClosureOnce {
-            alloc,
+            _alloc: alloc,
             code,
             _cif,
             _userdata,
@@ -456,7 +475,7 @@ impl ClosureOnce {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
     use super::*;
     use crate::low;
@@ -465,7 +484,7 @@ mod test {
 
     #[test]
     fn call() {
-        let cif = Cif::new(vec![Type::i64(), Type::i64()], Type::i64());
+        let cif = Cif::new(alloc::vec![Type::i64(), Type::i64()], Type::i64());
         let f = |m: i64, n: i64| -> i64 {
             unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&m), arg(&n)]) }
         };
@@ -481,7 +500,7 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(vec![Type::u64()], Type::u64());
+        let cif = Cif::new(alloc::vec![Type::u64()], Type::u64());
         let env: u64 = 5;
         let closure = Closure::new(cif, callback, &env);
 
@@ -503,7 +522,7 @@ mod test {
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(vec![Type::u64(), Type::u64()], Type::u64());
+        let cif = Cif::new(std::vec![Type::u64(), Type::u64()], Type::u64());
         let env = |x: u64, y: u64| x + y;
         let closure = Closure::new(cif, callback2, &env);
 
@@ -528,9 +547,9 @@ mod test {
     #[test]
     fn clone_cif() {
         let cif = Cif::new(
-            vec![
-                Type::structure(vec![
-                    Type::structure(vec![Type::u64(), Type::u8(), Type::f64()]),
+            alloc::vec![
+                Type::structure(alloc::vec![
+                    Type::structure(alloc::vec![Type::u64(), Type::u8(), Type::f64()]),
                     Type::i8(),
                     Type::i64(),
                 ]),
@@ -541,7 +560,7 @@ mod test {
         let clone_cif = cif.clone();
 
         unsafe {
-            let args = std::slice::from_raw_parts(cif.cif.arg_types, cif.cif.nargs as usize);
+            let args = core::slice::from_raw_parts(cif.cif.arg_types, cif.cif.nargs as usize);
             let struct_arg = args
                 .first()
                 .expect("CIF arguments slice was empty")
@@ -549,7 +568,7 @@ mod test {
                 .expect("CIF first argument was null");
             // Get slice of length 1 to get the first element
             let struct_size = struct_arg.size;
-            let struct_parts = std::slice::from_raw_parts(struct_arg.elements, 1);
+            let struct_parts = core::slice::from_raw_parts(struct_arg.elements, 1);
             let substruct_size = struct_parts
                 .first()
                 .expect("CIF struct argument's elements slice was empty")
@@ -558,7 +577,7 @@ mod test {
                 .size;
 
             let clone_args =
-                std::slice::from_raw_parts(clone_cif.cif.arg_types, clone_cif.cif.nargs as usize);
+                core::slice::from_raw_parts(clone_cif.cif.arg_types, clone_cif.cif.nargs as usize);
             let clone_struct_arg = clone_args
                 .first()
                 .expect("CIF arguments slice was empty")
@@ -566,7 +585,7 @@ mod test {
                 .expect("CIF first argument was null");
             // Get slice of length 1 to get the first element
             let clone_struct_size = clone_struct_arg.size;
-            let clone_struct_parts = std::slice::from_raw_parts(clone_struct_arg.elements, 1);
+            let clone_struct_parts = core::slice::from_raw_parts(clone_struct_arg.elements, 1);
             let clone_substruct_size = clone_struct_parts
                 .first()
                 .expect("Cloned CIF struct argument's elements slice was empty")

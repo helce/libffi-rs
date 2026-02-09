@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/libffi-sys/3.3.3")]
+#![doc(html_root_url = "https://docs.rs/libffi-sys/4.0.0")]
 //! Low-level Rust bindings for [libffi](https://sourceware.org/libffi/)
 //!
 //! The C libffi library provides two main facilities: assembling calls
@@ -30,14 +30,14 @@
 //!
 //! ```toml
 //! [dependencies]
-//! libffi-sys = "3.3.3"
+//! libffi-sys = "4.0.0"
 //! ```
 //!
 //! to your `Cargo.toml`. If you want to use your system C libffi, then
 //!
 //! ```toml
 //! [dependencies.libffi-sys]
-//! version = "3.3.3"
+//! version = "4.0.0"
 //! features = ["system"]
 //! ```
 //!
@@ -50,6 +50,10 @@
 #![allow(non_upper_case_globals)]
 #![allow(improper_ctypes)]
 #![allow(unused_imports)]
+#![no_std]
+
+#[cfg(feature = "std")]
+extern crate std;
 
 use core::ffi::{c_char, c_int, c_long, c_schar, c_uint, c_ulong, c_ushort, c_void};
 use core::fmt::{self, Debug, Formatter};
@@ -66,7 +70,7 @@ pub type ffi_sarg = c_long;
 pub type ffi_abi = u32;
 /// The return type of `libffi`'s functions that may return an error.
 pub type ffi_status = u32;
-pub type ffi_type_enum = u32;
+pub type ffi_type_enum = u16;
 
 pub const FFI_64_BIT_MAX: u64 = 9_223_372_036_854_775_807;
 pub const FFI_CLOSURES: u32 = 1;
@@ -74,23 +78,23 @@ pub const FFI_SIZEOF_ARG: usize = core::mem::size_of::<c_long>();
 // NOTE: This only differs from FFI_SIZEOF_ARG on ILP platforms, which Rust does not support
 pub const FFI_SIZEOF_JAVA_RAW: usize = FFI_SIZEOF_ARG;
 
-pub const FFI_TYPE_VOID: u32 = 0;
-pub const FFI_TYPE_INT: u32 = 1;
-pub const FFI_TYPE_FLOAT: u32 = 2;
-pub const FFI_TYPE_DOUBLE: u32 = 3;
-pub const FFI_TYPE_LONGDOUBLE: u32 = 4;
-pub const FFI_TYPE_UINT8: u32 = 5;
-pub const FFI_TYPE_SINT8: u32 = 6;
-pub const FFI_TYPE_UINT16: u32 = 7;
-pub const FFI_TYPE_SINT16: u32 = 8;
-pub const FFI_TYPE_UINT32: u32 = 9;
-pub const FFI_TYPE_SINT32: u32 = 10;
-pub const FFI_TYPE_UINT64: u32 = 11;
-pub const FFI_TYPE_SINT64: u32 = 12;
-pub const FFI_TYPE_STRUCT: u32 = 13;
-pub const FFI_TYPE_POINTER: u32 = 14;
-pub const FFI_TYPE_COMPLEX: u32 = 15;
-pub const FFI_TYPE_LAST: u32 = 15;
+pub const FFI_TYPE_VOID: u16 = 0;
+pub const FFI_TYPE_INT: u16 = 1;
+pub const FFI_TYPE_FLOAT: u16 = 2;
+pub const FFI_TYPE_DOUBLE: u16 = 3;
+pub const FFI_TYPE_LONGDOUBLE: u16 = 4;
+pub const FFI_TYPE_UINT8: u16 = 5;
+pub const FFI_TYPE_SINT8: u16 = 6;
+pub const FFI_TYPE_UINT16: u16 = 7;
+pub const FFI_TYPE_SINT16: u16 = 8;
+pub const FFI_TYPE_UINT32: u16 = 9;
+pub const FFI_TYPE_SINT32: u16 = 10;
+pub const FFI_TYPE_UINT64: u16 = 11;
+pub const FFI_TYPE_SINT64: u16 = 12;
+pub const FFI_TYPE_STRUCT: u16 = 13;
+pub const FFI_TYPE_POINTER: u16 = 14;
+pub const FFI_TYPE_COMPLEX: u16 = 15;
+pub const FFI_TYPE_LAST: u16 = 15;
 
 pub const ffi_status_FFI_OK: ffi_status = 0;
 pub const ffi_status_FFI_BAD_TYPEDEF: ffi_status = 1;
@@ -140,7 +144,7 @@ pub const ffi_type_enum_COMPLEX: ffi_type_enum = 15;
 ///
 /// let mut custom_struct_description = libffi_sys::ffi_type {
 ///     // `libffi::low::type_tag::STRUCT` can be used instead if using libffi
-///     type_: libffi_sys::FFI_TYPE_STRUCT as u16,
+///     type_: libffi_sys::FFI_TYPE_STRUCT,
 ///     elements: elements_array.as_mut_ptr(),
 ///     ..Default::default()
 /// };
@@ -215,7 +219,7 @@ impl Default for ffi_cif {
     }
 }
 
-#[repr(C, align(64))]
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub union ffi_raw {
     pub sint: ffi_sarg,
@@ -233,7 +237,7 @@ impl Default for ffi_raw {
 
 pub type ffi_java_raw = ffi_raw;
 
-#[repr(C, align(64))]
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub union ffi_trampoline {
     pub tramp: [c_char; FFI_TRAMPOLINE_SIZE],
@@ -248,9 +252,31 @@ pub union ffi_trampoline {
 /// `ffi_closure` should not be created manually. Instead, [`ffi_closure_alloc`]
 /// should be invoked to allocate memory for the `ffi_closure` before its fields
 /// are populated by [`ffi_prep_closure`].
-#[repr(C)]
+///
+/// **Caution** `ffi_closure` should not be generated or modified manually, but
+/// allocated by `ffi_closure_alloc` and passed around to libffi functions as a
+/// pointer.
+#[repr(C, align(8))]
 #[derive(Copy, Clone)]
 pub struct ffi_closure {
+    // https://github.com/libffi/libffi/blob/252c0f463641e6100169c3f0a4a590d7df438278/include/ffi.h.in#L325
+    // https://github.com/libffi/libffi/blob/252c0f463641e6100169c3f0a4a590d7df438278/configure.ac#L227
+    // On Apple systems with ARM CPUs, two pointers `trampoline_table` and
+    // `trampoline_table_entry` are used instead of the `ffi_trampoline`.
+    #[cfg(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    ))]
+    pub trampoline_table: *mut c_void,
+    #[cfg(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    ))]
+    pub trampoline_table_entry: *mut c_void,
+    #[cfg(not(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    )))]
     pub tramp: ffi_trampoline,
     pub cif: *mut ffi_cif,
     pub fun: Option<
@@ -262,13 +288,33 @@ pub struct ffi_closure {
         ),
     >,
     pub user_data: *mut c_void,
+    // https://github.com/libffi/libffi/blob/252c0f463641e6100169c3f0a4a590d7df438278/include/ffi.h.in#L337
+    #[cfg(all(target_env = "msvc", target_arch = "x86"))]
+    pub _padding: *mut c_void,
 }
 
 /// Implements Debug manually since sometimes `FFI_TRAMPOLINE_SIZE` is too large
 impl Debug for ffi_closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ffi_closure")
-            .field("tramp", unsafe { &&self.tramp.tramp[..] })
+        let mut debug_struct = f.debug_struct("ffi_closure");
+
+        #[cfg(all(
+            target_vendor = "apple",
+            any(target_arch = "arm", target_arch = "aarch64")
+        ))]
+        debug_struct
+            .field("trampoline_table", &self.trampoline_table)
+            .field("trampoline_table_entry", &self.trampoline_table_entry);
+        #[cfg(not(all(
+            target_vendor = "apple",
+            any(target_arch = "arm", target_arch = "aarch64")
+        )))]
+        debug_struct
+            // SAFETY: This might be undefined behavior if `tramp` is a `ftramp`. It is probably
+            // okay for debug purposes, however.
+            .field("tramp", unsafe { &self.tramp.tramp });
+
+        debug_struct
             .field("cif", &self.cif)
             .field("fun", &self.fun)
             .field("user_data", &self.user_data)
@@ -424,13 +470,13 @@ extern "C" {
     pub static mut ffi_type_longdouble: ffi_type;
     pub static mut ffi_type_pointer: ffi_type;
 
-    #[cfg(feature = "complex")]
+    #[cfg(all(feature = "complex", not(windows)))]
     pub static mut ffi_type_complex_float: ffi_type;
 
-    #[cfg(feature = "complex")]
+    #[cfg(all(feature = "complex", not(windows)))]
     pub static mut ffi_type_complex_double: ffi_type;
 
-    #[cfg(feature = "complex")]
+    #[cfg(all(feature = "complex", not(windows)))]
     pub static mut ffi_type_complex_longdouble: ffi_type;
 
     pub fn ffi_raw_call(
@@ -623,9 +669,10 @@ extern "C" {
     ) -> ffi_status;
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod test {
     use std::{mem::transmute, ptr::addr_of_mut};
+    use std::{vec, vec::Vec};
 
     use super::*;
 
@@ -699,6 +746,25 @@ mod test {
             );
 
             assert_eq!(rval, 9);
+        }
+    }
+
+    // Verify that `ffi_closure` is the correct size. This does not guarantee
+    // that the layout of the struct is correct, but it *should* not matter much
+    // as `ffi_closure` *should* not be modified outside of libffi.
+    // `ffi_get_closure_size` was added in libffi v3.5.0. This test cannot be
+    // executed without the function, so it is disabled when performing dynamic
+    // linking to libffi until version 3.5.0. is required for dynamic linking by
+    // libffi-rs.
+    #[cfg(not(feature = "system"))]
+    #[test]
+    fn verify_ffi_closure_size() {
+        extern "C" {
+            fn ffi_get_closure_size() -> usize;
+        }
+
+        unsafe {
+            assert_eq!(std::mem::size_of::<ffi_closure>(), ffi_get_closure_size());
         }
     }
 }

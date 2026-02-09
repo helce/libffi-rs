@@ -1,6 +1,6 @@
 [package]
 name = "libffi-sys"
-version = "3.3.3"
+version = "4.0.0"
 authors = ["Jesse A. Tov <jesse.tov@gmail.com>"]
 links = "ffi"
 build = "build/build.rs"
@@ -13,13 +13,15 @@ edition.workspace = true
 rust-version.workspace = true
 
 [features]
+default = ["std"]
+std = []
 system = []
 complex = []
 # Can be used to accelerate check builds by not building C code
 check_only = []
 
 [package.metadata.docs.rs]
-features = ["system"]
+features = ["std", "system"]
 
 [build-dependencies]
 cc = "1.0"

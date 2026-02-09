@@ -49,7 +49,7 @@ pub unsafe trait CType: Copy {
     /// The low-level libffi library implicitly extends small integer
     /// return values to `ffi_arg` or `ffi_sarg`.  Track the possibly
     /// extended variant of `T` as an associated type here.
-    type RetType: std::convert::From<Self> + std::convert::TryInto<Self>;
+    type RetType: core::convert::From<Self> + core::convert::TryInto<Self>;
 }
 
 macro_rules! impl_ffi_type {
@@ -94,7 +94,7 @@ impl_ffi_type!((), (), void);
 /// Laid out the same as C11 `float complex` and C++11
 /// `std::complex<float>`.
 ///
-/// This item is enabled by `#[cfg(feature = "complex")]`.
+/// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
 ///
 /// # Warning
 ///
@@ -103,13 +103,13 @@ impl_ffi_type!((), (), void);
 /// okay. Theoretically, passing it via libffi is okay, but libffi
 /// doesn’t have complex support on most platforms yet.
 #[allow(non_camel_case_types)]
-#[cfg(feature = "complex")]
+#[cfg(all(feature = "complex", not(windows)))]
 pub type c_c32 = [f32; 2];
 
 /// Laid out the same as C11 `double complex` and C++11
 /// `std::complex<double>`.
 ///
-/// This item is enabled by `#[cfg(feature = "complex")]`.
+/// This item is enabled by `#[cfg(all(feature = "complex", not(windows)))]`.
 ///
 /// # Warning
 ///
@@ -118,13 +118,13 @@ pub type c_c32 = [f32; 2];
 /// okay. Theoretically, passing it via libffi is okay, but libffi
 /// doesn’t have complex support on most platforms yet.
 #[allow(non_camel_case_types)]
-#[cfg(feature = "complex")]
+#[cfg(all(feature = "complex", not(windows)))]
 pub type c_c64 = [f64; 2];
 
-#[cfg(feature = "complex")]
+#[cfg(all(feature = "complex", not(windows)))]
 impl_ffi_type!(c_c32, c32);
 
-#[cfg(feature = "complex")]
+#[cfg(all(feature = "complex", not(windows)))]
 impl_ffi_type!(c_c64, c64);
 
 unsafe impl<T> CType for *const T {

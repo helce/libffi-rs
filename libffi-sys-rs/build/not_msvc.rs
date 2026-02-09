@@ -1,5 +1,8 @@
 use crate::common::*;
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn build_and_link() {
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -38,7 +41,7 @@ pub fn build_and_link() {
     // Generate configure, run configure, make, make install
     configure_libffi(prefix, &build_dir);
 
-    let make_command = if cfg!(target_os = "aix") {
+    let make_command = if cfg!(target_os = "aix") || cfg!(target_os = "illumos") {
         "gmake"
     } else {
         "make"
@@ -78,6 +81,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
             "riscv64gc-unknown-linux-gnu" => "riscv64-unknown-linux-gnu",
             "riscv64gc-unknown-linux-musl" => "riscv64-unknown-linux-musl",
+            "riscv64a23-unknown-linux-gnu" => "riscv64-unknown-linux-gnu",
             // Autoconf does not yet recognize illumos, but Solaris should be fine
             "x86_64-unknown-illumos" => "x86_64-unknown-solaris",
             // configure.host does not extract `ios-sim` as OS.
@@ -150,7 +154,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
         command.arg("--prefix").arg(prefix);
     }
 
-    if cfg!(target_os = "aix") {
+    if cfg!(target_os = "aix") || cfg!(target_os = "illumos") {
         command.env("MAKE", "gmake");
     }
 

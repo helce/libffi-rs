@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/libffi/4.1.2")]
+#![doc(html_root_url = "https://docs.rs/libffi/5.0.0")]
 //! Rust bindings for [libffi](https://sourceware.org/libffi/).
 //!
 //! The C libffi library provides two main facilities: assembling calls
@@ -22,7 +22,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! libffi = "4.1.2"
+//! libffi = "5.0.0"
 //! ```
 //!
 //! This crate depends on [the `libffi-sys` crate], which by default
@@ -32,7 +32,7 @@
 //!
 //! ```toml
 //! [features]
-//! libffi = { version = "4.1.2", features = ["system"] }
+//! libffi = { version = "5.0.0", features = ["system"] }
 //! ```
 //!
 //! See [the `libffi-sys` documentation] for more information about how it
@@ -87,6 +87,11 @@
 //!
 
 #![deny(missing_docs)]
+#![no_std]
+
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 
 /// Raw definitions imported from the C library (via bindgen).
 ///

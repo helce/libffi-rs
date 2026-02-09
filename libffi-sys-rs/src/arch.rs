@@ -22,7 +22,7 @@ mod x86 {
         }
 
         mod msvc {
-            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_GNUW64;
+            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_WIN64;
         }
 
         #[cfg(target_env = "gnu")]
@@ -452,3 +452,24 @@ pub use mips::mips::*;
 
 #[cfg(any(target_arch = "mips64", target_arch = "mips64r6"))]
 pub use mips::mips64::*;
+
+#[cfg(all(test, feature = "std"))]
+mod test {
+    use core::ffi::c_uint;
+
+    use super::*;
+
+    // `ffi_get_default_abi` was added in libffi v3.5.0. This test cannot be
+    // executed without the function, so it is disabled when performing dynamic
+    // linking to libffi until version 3.5.0. is required for dynamic linking by
+    // libffi-rs.
+    #[cfg(not(feature = "system"))]
+    #[test]
+    fn verify_default_abi() {
+        extern "C" {
+            fn ffi_get_default_abi() -> c_uint;
+        }
+
+        unsafe { assert_eq!(ffi_abi_FFI_DEFAULT_ABI, ffi_get_default_abi()) }
+    }
+}
