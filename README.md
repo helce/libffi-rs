@@ -18,7 +18,7 @@ This repository is a Cargo workspace containing both `libffi` and `libffi-sys`.
 
 ## Usage
 
-Building `libffi` will build `lifbffi-sys`, which will in turn build the
+Building `libffi` will build `libffi-sys`, which will in turn build the
 libffi C library [from github](https://github.com/libffi/libffi), which
 requires that you have a working make, C compiler, automake, and
 autoconf first. It’s [on crates.io](https://crates.io/crates/libffi), so
@@ -26,7 +26,7 @@ you can add
 
 ```toml
 [dependencies]
-libffi = "4.1.1"
+libffi = "5.1.1"
 ```
 
 to your `Cargo.toml`.
@@ -37,8 +37,8 @@ use your system’s C libffi instead, enable this crate’s `system`
 feature in your `Cargo.toml`:
 
 ```toml
-[features]
-libffi = { version = "4.1.1", features = ["system"] }
+[dependencies]
+libffi = { version = "5.1.1", features = ["system"] }
 ```
 
 See [the `libffi-sys` documentation] for more information about how it
@@ -62,7 +62,7 @@ fn main() {
     let closure = Closure2::new(&f);
     let fun = closure.code_ptr();
 
-    assert_eq!(18, fun(6, 7));
+    assert_eq!(18, fun.call(6, 7));
 }
 ```
 

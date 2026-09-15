@@ -31,20 +31,20 @@ a C libffi for you, add
 
 ```toml
 [dependencies]
-libffi-sys = "4.2.0"
+libffi-sys = "4.2.1"
 ```
 
 to your `Cargo.toml`. If you want to use your system C libffi, then
 
 ```toml
 [dependencies.libffi-sys]
-version = "4.2.0"
+version = "4.2.1"
 features = ["system"]
 ```
 
 to your `Cargo.toml` instead.
 
-This crate supports Rust version 1.32 and later.
+This crate supports Rust version 1.78 and later.
 
 [the `libffi` crate]: https://crates.io/crates/libffi/
 [libffi]: https://sourceware.org/libffi/

@@ -14,7 +14,7 @@ ordinary C function pointer that we can pass as a callback to C.
 
 ## Usage
 
-Building `libffi` will build `lifbffi-sys`, which will in turn build the
+Building `libffi` will build `libffi-sys`, which will in turn build the
 libffi C library [from github](https://github.com/libffi/libffi), which
 requires that you have a working make, C compiler, automake, and
 autoconf first. It’s [on crates.io](https://crates.io/crates/libffi), so
@@ -33,7 +33,7 @@ use your system’s C libffi instead, enable this crate’s `system`
 feature in your `Cargo.toml`:
 
 ```toml
-[features]
+[dependencies]
 libffi = { version = "5.1.1", features = ["system"] }
 ```
 

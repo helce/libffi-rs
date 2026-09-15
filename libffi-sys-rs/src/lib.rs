@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/libffi-sys/4.2.0")]
+#![doc(html_root_url = "https://docs.rs/libffi-sys/4.2.1")]
 //! Low-level Rust bindings for [libffi](https://sourceware.org/libffi/)
 //!
 //! The C libffi library provides two main facilities: assembling calls
@@ -30,14 +30,14 @@
 //!
 //! ```toml
 //! [dependencies]
-//! libffi-sys = "4.2.0"
+//! libffi-sys = "4.2.1"
 //! ```
 //!
 //! to your `Cargo.toml`. If you want to use your system C libffi, then
 //!
 //! ```toml
 //! [dependencies.libffi-sys]
-//! version = "4.2.0"
+//! version = "4.2.1"
 //! features = ["system"]
 //! ```
 //!
@@ -682,6 +682,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot access libffi's extern type statics")]
     fn test_function_sign_extension() {
         unsafe {
             let mut cif: ffi_cif = Default::default();
@@ -716,6 +717,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot access libffi's extern type statics")]
     fn test_function_with_two_arguments() {
         unsafe {
             let mut cif: ffi_cif = Default::default();

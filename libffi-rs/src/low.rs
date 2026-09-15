@@ -8,7 +8,7 @@
 //! See [`middle`](crate::middle) for an easier-to-use approach.
 
 use core::ffi::{c_uint, c_void};
-use core::ptr::addr_of;
+use core::ptr::{addr_of, addr_of_mut, null_mut};
 use core::{mem, ptr};
 
 use crate::raw;
@@ -23,6 +23,8 @@ pub enum Error {
     Abi,
     /// Given a bad or unsupported argument type.
     ArgType,
+    /// A libffi-managed allocation failed.
+    Allocation,
 }
 
 /// The [`std::result::Result`] type specialized for libffi [`Error`]s.
@@ -254,7 +256,8 @@ pub unsafe fn prep_cif(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<()> {
-    let status = raw::ffi_prep_cif(cif, abi, nargs as c_uint, rtype, atypes);
+    let nargs = c_uint::try_from(nargs).map_err(|_| Error::ArgType)?;
+    let status = raw::ffi_prep_cif(cif, abi, nargs, rtype, atypes);
     status_to_result(status, ())
 }
 
@@ -293,14 +296,68 @@ pub unsafe fn prep_cif_var(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<()> {
-    let status = raw::ffi_prep_cif_var(
-        cif,
-        abi,
-        nfixedargs as c_uint,
-        ntotalargs as c_uint,
-        rtype,
-        atypes,
-    );
+    if nfixedargs > ntotalargs {
+        return Err(Error::ArgType);
+    }
+
+    let nfixedargs = c_uint::try_from(nfixedargs).map_err(|_| Error::ArgType)?;
+    let ntotalargs = c_uint::try_from(ntotalargs).map_err(|_| Error::ArgType)?;
+    let status = raw::ffi_prep_cif_var(cif, abi, nfixedargs, ntotalargs, rtype, atypes);
+    status_to_result(status, ())
+}
+
+/// Computes the offsets of a structure's fields for the given ABI.
+///
+///  In either case, libffi initializes the
+/// structure type's `size` and `alignment` fields.
+///
+/// # Safety
+///
+/// `struct_type` must point to a valid structure [`ffi_type`] whose
+/// null-terminated element array remains valid for the duration of this call.
+/// If `offsets` is not null, it must be valid for writes of one [`usize`] per
+/// structure field.
+///
+/// # Arguments
+///
+/// - `abi` — the calling convention to use
+/// - `struct_type` — the structure type to compute offsets for
+/// - `offsets` — the array to store the offsets in. It must have one element for every field in `struct_type`. It may instead be null to lay out the structure without retrieving its field offsets.
+///
+/// # Examples
+///
+/// ```
+/// use core::ptr::{addr_of_mut, null_mut};
+/// use libffi::low::*;
+///
+/// let mut elements = unsafe {
+///     [addr_of_mut!(types::uint8), addr_of_mut!(types::uint64), null_mut()]
+/// };
+/// let mut structure = ffi_type {
+///     type_: type_tag::STRUCT,
+///     elements: elements.as_mut_ptr(),
+///     ..Default::default()
+/// };
+/// let mut offsets = [0; 2];
+///
+/// unsafe {
+///     get_struct_offsets(
+///         ffi_abi_FFI_DEFAULT_ABI,
+///         addr_of_mut!(structure),
+///         offsets.as_mut_ptr(),
+///     )
+/// }
+/// .unwrap();
+///
+/// assert_eq!(offsets[0], 0);
+/// assert!(offsets[1] >= 1);
+/// ```
+pub unsafe fn get_struct_offsets(
+    abi: ffi_abi,
+    struct_type: *mut ffi_type,
+    offsets: *mut usize,
+) -> Result<()> {
+    let status = raw::ffi_get_struct_offsets(abi, struct_type, offsets);
     status_to_result(status, ())
 }
 
@@ -567,14 +624,28 @@ pub unsafe fn call_return_into(
 /// let (closure_handle, code_ptr) = closure_alloc();
 /// ```
 pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
+    try_closure_alloc().expect("ffi_closure_alloc")
+}
+
+/// Attempts to allocate a closure.
+///
+/// This is the fallible counterpart to [`closure_alloc`]. It returns [`None`]
+/// if libffi cannot allocate the closure and its executable code pointer.
+pub fn try_closure_alloc() -> Option<(*mut ffi_closure, CodePtr)> {
     unsafe {
-        let mut code_pointer = mem::MaybeUninit::<*mut c_void>::uninit();
+        let mut code_pointer = null_mut();
         let closure =
-            raw::ffi_closure_alloc(mem::size_of::<ffi_closure>(), code_pointer.as_mut_ptr());
-        (
-            closure as *mut ffi_closure,
-            CodePtr::from_ptr(code_pointer.assume_init()),
-        )
+            raw::ffi_closure_alloc(mem::size_of::<ffi_closure>(), addr_of_mut!(code_pointer))
+                .cast::<ffi_closure>();
+
+        if closure.is_null() || code_pointer.is_null() {
+            if !closure.is_null() {
+                raw::ffi_closure_free(closure.cast());
+            }
+            None
+        } else {
+            Some((closure, CodePtr::from_ptr(code_pointer)))
+        }
     }
 }
 
@@ -827,6 +898,89 @@ mod test {
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     struct LargeStruct(u64, u64, u64, u64);
+    #[repr(C)]
+    struct StructWithPadding {
+        one: u8,
+        two: u64,
+        three: u16,
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn rejects_argument_count_overflow() {
+        unsafe {
+            assert_eq!(
+                prep_cif(
+                    null_mut(),
+                    ffi_abi_FFI_DEFAULT_ABI,
+                    usize::MAX,
+                    null_mut(),
+                    null_mut(),
+                ),
+                Err(Error::ArgType)
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_variadic_argument_count() {
+        unsafe {
+            assert_eq!(
+                prep_cif_var(
+                    null_mut(),
+                    ffi_abi_FFI_DEFAULT_ABI,
+                    2,
+                    1,
+                    null_mut(),
+                    null_mut(),
+                ),
+                Err(Error::ArgType)
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot access libffi's extern type statics")]
+    fn test_get_struct_offsets() {
+        #[allow(unused_unsafe)]
+        let mut elements = unsafe {
+            [
+                addr_of_mut!(types::uint8),
+                addr_of_mut!(types::uint64),
+                addr_of_mut!(types::uint16),
+                null_mut(),
+            ]
+        };
+        let mut type_ = ffi_type {
+            type_: type_tag::STRUCT,
+            elements: elements.as_mut_ptr(),
+            ..Default::default()
+        };
+        let mut offsets = [usize::MAX; 3];
+
+        unsafe {
+            get_struct_offsets(
+                ffi_abi_FFI_DEFAULT_ABI,
+                addr_of_mut!(type_),
+                offsets.as_mut_ptr(),
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            offsets,
+            [
+                mem::offset_of!(StructWithPadding, one),
+                mem::offset_of!(StructWithPadding, two),
+                mem::offset_of!(StructWithPadding, three),
+            ]
+        );
+        assert_eq!(type_.size, mem::size_of::<StructWithPadding>());
+        assert_eq!(
+            usize::from(type_.alignment),
+            mem::align_of::<StructWithPadding>()
+        );
+    }
 
     extern "C" fn return_nothing() {}
     extern "C" fn return_i8(a: i8) -> i8 {
@@ -893,6 +1047,10 @@ mod test {
 
     /// Test to ensure that values returned from functions called through libffi are correct.
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot call Rust function pointers through libffi"
+    )]
     fn test_return_values() {
         // Test a function returning nothing.
         {
@@ -1007,6 +1165,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot call Rust function pointers through libffi"
+    )]
     fn test_return_into() {
         // Test a function returning nothing.
         {
@@ -1132,6 +1294,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri cannot call Rust function pointers through libffi"
+    )]
     fn test_return_into_no_oob_write() {
         // Workaround for Rust < 1.88, which don't have a Default impl for
         // pointers..
