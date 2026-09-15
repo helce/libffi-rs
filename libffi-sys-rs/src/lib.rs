@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/libffi-sys/4.1.0")]
+#![doc(html_root_url = "https://docs.rs/libffi-sys/4.2.0")]
 //! Low-level Rust bindings for [libffi](https://sourceware.org/libffi/)
 //!
 //! The C libffi library provides two main facilities: assembling calls
@@ -30,14 +30,14 @@
 //!
 //! ```toml
 //! [dependencies]
-//! libffi-sys = "4.1.0"
+//! libffi-sys = "4.2.0"
 //! ```
 //!
 //! to your `Cargo.toml`. If you want to use your system C libffi, then
 //!
 //! ```toml
 //! [dependencies.libffi-sys]
-//! version = "4.1.0"
+//! version = "4.2.0"
 //! features = ["system"]
 //! ```
 //!
@@ -256,7 +256,8 @@ pub union ffi_trampoline {
 /// **Caution** `ffi_closure` should not be generated or modified manually, but
 /// allocated by `ffi_closure_alloc` and passed around to libffi functions as a
 /// pointer.
-#[repr(C, align(8))]
+#[repr(C)]
+#[cfg_attr(target_env = "msvc", repr(align(8)))]
 #[derive(Copy, Clone)]
 pub struct ffi_closure {
     // https://github.com/libffi/libffi/blob/252c0f463641e6100169c3f0a4a590d7df438278/include/ffi.h.in#L325

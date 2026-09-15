@@ -46,11 +46,11 @@ fn status_to_result<R>(status: raw::ffi_status, good: R) -> Result<R> {
 /// Wraps a function pointer of unknown type.
 ///
 /// This is used to make the API a bit easier to understand, and as a
-/// simple type lint. As a `repr(C)` struct of one element, it should
+/// simple type lint. As a `repr(transparent)` struct of one element, it should
 /// be safe to transmute between `CodePtr` and `*mut c_void`, or between
 /// collections thereof.
 #[derive(Clone, Copy, Debug, Hash)]
-#[repr(C)]
+#[repr(transparent)]
 pub struct CodePtr(pub *mut c_void);
 
 // How useful is this type? Does it need all the methods?
@@ -311,7 +311,7 @@ pub unsafe fn prep_cif_var(
 /// * `cif` — describes the argument and result types and the calling
 ///   convention
 /// * `fun` — the function to call
-/// * `args` — the arguments to pass to `fun`
+/// * `args` — the arguments to pass to `fun` (args might be modified by libffi when a large struct is passed)
 ///
 /// # Result
 ///
@@ -350,6 +350,10 @@ pub unsafe fn prep_cif_var(
 /// It is also important that the return type `R` matches the type of the value
 /// returned from `fun` as a mismatch may lead to out-of-bounds reads, write,
 /// and misaligned memory accesses.
+///
+/// Additionally, libffi modifies some of the pointers in args if the struct is large enough.
+/// It copies large structures to a new location and rewrites the pointer.
+/// this leads to an issue if args is being reused across multiple calls.
 pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -> R {
     // libffi always writes *at least* a full register to the result pointer.
     // Therefore, if the return value is smaller, we need to handle the return
